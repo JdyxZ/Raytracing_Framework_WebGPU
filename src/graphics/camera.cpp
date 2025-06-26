@@ -173,7 +173,7 @@ const Ray Raytracing::Camera::get_ray_sample(int pixel_row, int pixel_column, in
         + ((pixel_column + offset.x) * pixel_delta_u);
 
     auto ray_origin = (defocus_angle <= 0) ? lookfrom : defocus_disk_sample(lookfrom, defocus_disk_u, defocus_disk_v);
-    auto ray_direction = pixel_sample - ray_origin;
+    auto ray_direction = unit_vector(pixel_sample - ray_origin);
     auto ray_time = random_number<double>();
 
     auto ray = Ray(ray_origin, ray_direction, ray_time);
@@ -185,11 +185,11 @@ color Raytracing::Camera::ray_color(const Ray& sample_ray, int depth, const Scen
 {
     // Halt execution check
     if (s_token.stop_requested())
-        return color(0,0,0);
+        return color(0.0);
 
     // If we've exceeded the ray bounce limit, no more light is gathered.
     if (depth <= 0)
-        return color(0, 0, 0);
+        return color(0.0);
 
     // Intersection details
     hit_record hrec;
@@ -209,118 +209,122 @@ color Raytracing::Camera::ray_color(const Ray& sample_ray, int depth, const Scen
     // Hit object type
     HITTABLE_TYPE hit_object_type = hrec.type;
 
-    // If the ray hits an object, calculate the color of the hit point
-    switch (hit_object_type)
+    // Check unknown hit
+    if (!Hittable::is_primitive_hittable(hit_object_type))
     {
-    case CONSTANT_MEDIUM:
-
-    case TRIANGLE:
-
-    case QUAD:
-
-    case SPHERE:
-    {
-        // Intersection point computed colors
-        color color_from_scatter;
-        color color_from_emission = hrec.material->emitted(sample_ray, hrec);
-
-        // Material scattering details
-        scatter_record srec;
-
-        // If the ray does not scatter, it has hit an emissive material
-        if (!hrec.material->scatter(sample_ray, hrec, srec))
-        {
-            #pragma omp atomic update
-                light_rays++;
-
-            return color_from_emission;
-        }
-
-        // Deal with specular materials apart from the rest (PDF skip)
-        if (srec.is_specular)
-        {
-            switch (srec.scatter_type)
-            {
-                case REFLECT: // Metal or Dielectric
-                    #pragma omp atomic update
-                        reflected_rays++;
-                    break; 
-                case REFRACT: // Dielectric
-                    #pragma omp atomic update
-                        refracted_rays++;
-                    break; 
-            }
-
-            return srec.attenuation * ray_color(srec.specular_ray.value(), depth - 1, scene, s_token);
-        }
-
-        // Aux variables (to make code more understandable)
-        auto hittables_with_pdf = scene.hittables_with_pdf;
-        auto material_pdf = srec.pdf;
-        vec3 surface_hit_point = hrec.p;
-
-        // Create the sampling PDF
-        shared_ptr<PDF> sampling_pdf;
-
-        // Determine the sampling PDF
-        if (hittables_with_pdf.empty())
-        {
-            // Material associated samplig PDF
-            sampling_pdf = material_pdf;
-        }
-        else
-        {
-            // Generate mixture of PDFs (hittable pdf + material pdf)
-            auto _hittables_pdf = make_shared<hittables_pdf>(hittables_with_pdf, surface_hit_point);
-            auto _mixture_pdf = make_shared<mixture_pdf>(_hittables_pdf, material_pdf);
-            sampling_pdf = _mixture_pdf;
-        }
-
-        // Generate random scatter ray using the sampling PDF
-        vec3 scatter_direction = sampling_pdf->generate();
-        auto scattered = Ray(surface_hit_point, scatter_direction, sample_ray.time());
-
-        // Get the weight of the generated scatter ray sample
-        auto sampling_pdf_value = sampling_pdf->value(scatter_direction);
-
-        // Get the material's associated scattering PDF
-        auto scattering_pdf_value = hrec.material->scattering_pdf_value(sample_ray, hrec, scattered);
-
-        // Update reflecting rays count
-        #pragma omp atomic update
-            reflected_rays++;
-
-        // === Russian Roulette ===
-        double rr_probability = 1;
-        if (scene.russian_roulette)
-        {
-            if (depth >= 3)
-            {
-                rr_probability = std::clamp(srec.attenuation.max_component(), 0.1, 1.0);
-                if (random_number<double>() > rr_probability)
-                    return color_from_emission;
-            }
-        }
-
-        // Recursive call
-        color sample_color = ray_color(scattered, depth - 1, scene, s_token);
-
-        // Bidirectional Reflectance Distribution Function (BRDF)
-        if (scene.russian_roulette)
-            color_from_scatter = (srec.attenuation * scattering_pdf_value * sample_color) / (sampling_pdf_value * rr_probability);
-        else
-            color_from_scatter = (srec.attenuation * scattering_pdf_value * sample_color) / (sampling_pdf_value);
-
-        // Combine scatter and emission colors
-        return color_from_emission + color_from_scatter;
-    }
-    default: // Unknown hit
-
         #pragma omp atomic update
             unknwon_rays++;
 
         return compute_background_color(scene, sample_ray);
     }
+
+    // Material type
+    MATERIAL_TYPE material_type = hrec.material->get_type();
+
+    // Determine material type
+    switch (material_type)
+    {
+        case MATERIAL_TYPE::_PDF:
+            return compute_pdf_color(sample_ray, depth, scene, s_token, hrec);
+        case MATERIAL_TYPE::NON_PDF:
+            return compute_non_pdf_color(sample_ray, depth, scene, s_token, hrec);
+        case MATERIAL_TYPE::EMISSIVE:
+            return compute_emissive_color(sample_ray, depth, scene, s_token, hrec);
+        default:
+            string error = Logger::error("CAMERA", "Unknown material type encountered during ray tracing. This should never happen.");
+            throw std::runtime_error(error);
+            return color(0.0); // Fallback return
+    }
+}
+
+color Raytracing::Camera::compute_pdf_color(const Ray& sample_ray, int depth, const Scene& scene, std::stop_token s_token, const hit_record& hrec)
+{
+    // Scatter material to get scattering info
+    scatter_record srec;
+    hrec.material->scatter(sample_ray, hrec, srec);
+
+    // Aux variables (to make code more readable)
+    auto hittables_with_pdf = scene.hittables_with_pdf;
+    auto material_pdf = srec.pdf;
+
+    // Create the sampling PDF
+    shared_ptr<PDF> sampling_pdf;
+
+    // Determine the sampling PDF
+    if (hittables_with_pdf.empty())
+    {
+        // Material associated samplig PDF
+        sampling_pdf = material_pdf;
+    }
+    else
+    {
+        // Generate mixture of PDFs (hittable pdf + material pdf)
+        auto _hittables_pdf = make_shared<hittables_pdf>(hittables_with_pdf, hrec.p);
+        auto _mixture_pdf = make_shared<mixture_pdf>(_hittables_pdf, material_pdf);
+        sampling_pdf = _mixture_pdf;
+    }
+
+    // Generate random scatter ray using the sampling PDF
+    PDFSampleData sample_data = sampling_pdf->generate(sample_ray);
+    sample_data.direction.normalize();
+    auto scattered_ray = Ray(hrec.p, sample_data.direction, sample_ray.time());
+
+    // Update reflecting rays count
+    #pragma omp atomic update
+        reflected_rays++;
+
+    // ================== Rendering equation ================== //
+
+    // Recursive call
+    color sample_color = ray_color(scattered_ray, depth - 1, scene, s_token);
+
+    // Calculate Bidirectional Reflectance Distribution Function (BRDF) value for the scattered ray
+    auto BRDF = hrec.material->BRDF_value(sample_ray, scattered_ray, hrec, srec);
+
+    // Get the weight of the generated scatter ray sample
+    auto pdf_value = sampling_pdf->value(sample_data);
+
+    // Get NdotL
+    auto cosine_theta = std::fmax(0, dot(hrec.normal, scattered_ray.direction()));
+
+    // Monte carlo estimate of the redering equation
+    return (BRDF * sample_color * cosine_theta) / pdf_value;
+}
+
+color Raytracing::Camera::compute_non_pdf_color(const Ray& sample_ray, int depth, const Scene& scene, std::stop_token s_token, const hit_record& hrec)
+{
+    // Scatter material to get scattering info
+    scatter_record srec;
+    hrec.material->scatter(sample_ray, hrec, srec);
+
+    switch (srec.scatter_type)
+    {
+    case REFLECT: // Metal or Dielectric
+        #pragma omp atomic update
+            reflected_rays++;
+        break;
+    case REFRACT: // Dielectric
+        #pragma omp atomic update
+            refracted_rays++;
+        break;
+    }
+
+    // Get scattered ray
+    auto scattered_ray = srec.non_pdf_ray.value();
+
+    // Calculate Bidirectional Reflectance Distribution Function (BRDF) value for the scattered ray
+    auto BRDF = hrec.material->BRDF_value(sample_ray, scattered_ray, hrec, srec);
+
+    return BRDF * ray_color(srec.non_pdf_ray.value(), depth - 1, scene, s_token);
+}
+
+color Raytracing::Camera::compute_emissive_color(const Ray& sample_ray, int depth, const Scene& scene, std::stop_token s_token, const hit_record& hrec)
+{
+    #pragma omp atomic update
+        light_rays++;
+
+    color color_from_emission = hrec.material->emitted(sample_ray, hrec);
+    return color_from_emission;
 }
 
 Raytracing::color Raytracing::Camera::compute_background_color(const Scene& scene, const Ray& sample_ray) const
@@ -339,7 +343,7 @@ Raytracing::color Raytracing::Camera::compute_background_color(const Scene& scen
         color start_color = scene.background_primary;
         color end_color = scene.background_secondary;
 
-        return lerp(a, start_color, end_color);
+        return lerp(start_color, end_color, a);
     }
     case BACKGROUND_TYPE::SKYBOX:
     {
@@ -357,7 +361,6 @@ Raytracing::color Raytracing::Camera::compute_background_color(const Scene& scen
         return scene.background; // Fallback to background color
     }
 }
-
 
 optional<color> Raytracing::Camera::barycentric_color_interpolation(const hit_record& rec, Triangle* t) const
 {

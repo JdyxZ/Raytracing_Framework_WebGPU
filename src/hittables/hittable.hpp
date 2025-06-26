@@ -81,6 +81,8 @@ public:
 
     void recompute_bbox();
 
+    static bool is_primitive_hittable(HITTABLE_TYPE type);
+
 protected:
     optional<Raytracing::AABB> original_bbox = nullopt;
     optional<Raytracing::AABB> bbox = nullopt;

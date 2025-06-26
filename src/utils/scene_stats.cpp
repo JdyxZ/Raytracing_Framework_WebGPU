@@ -59,7 +59,7 @@ void scene_stats::add(const shared_ptr<Hittable> object)
         auto quad_ptr = std::dynamic_pointer_cast<Quad>(object);
 
         auto material = quad_ptr->get_material();
-        if (material->get_type() == DIFFUSE_LIGHT) emissives++;
+        if (material->get_class() == DIFFUSE_LIGHT) emissives++;
 
         quads++;
         primitives++;

@@ -127,6 +127,11 @@ void Hittable::recompute_bbox()
     transform_bbox(model);
 }
 
+bool Hittable::is_primitive_hittable(HITTABLE_TYPE type)
+{
+    return type != SPHERE && type != QUAD && type != TRIANGLE && type != CONSTANT_MEDIUM;
+}
+
 void Hittable::set_model(const optional<Raytracing::Matrix44>& model)
 {
     if (!model.has_value())

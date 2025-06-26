@@ -147,7 +147,17 @@ inline vec3 refract(const vec3& incoming_ray, const vec3& n, double cos_theta, d
     return refracted_ray_perpendicular + refracted_ray_parellel;
 }
 
-inline vec3 lerp(double a, vec3 start, vec3 end)
+inline vec3 lerp(vec3 start, vec3 end, double a)
+{
+    return (1.0 - a) * start + a * end;
+}
+
+inline vec3 lerp(vec3 start, vec3 end, bool b)
+{
+    return b ? end : start;
+}
+
+inline vec3 lerp(vec3 start, vec3 end, vec3 a)
 {
     return (1.0 - a) * start + a * end;
 }

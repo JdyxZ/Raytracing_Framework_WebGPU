@@ -5,6 +5,7 @@
 #include "utils/image_reader.hpp"
 #include "graphics/color.hpp"
 #include "math/interval.hpp"
+#include "utils/project_parsers.hpp"
 
 // Usings
 using Raytracing::color;
@@ -69,8 +70,11 @@ color Raytracing::ImageTexture::value(optional<pair<double, double>> texture_coo
         throw std::invalid_argument(error);
     }
 
+    // Parse texture coordinates
+    auto parsed_texture_uvs = parse_texture_uvs(texture_coordinates, get_uv_wrap_modes());
+
     // Unwrap texture coordinates
-    auto [u, v] = texture_coordinates.value();
+    auto [u, v] = parsed_texture_uvs.value();
 
     // If we have no texture data, then return solid cyan as a debugging aid.
     if (image->height() <= 0)

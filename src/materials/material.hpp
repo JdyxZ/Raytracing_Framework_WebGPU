@@ -5,6 +5,8 @@
 #include "math/vec3.hpp"
 #include "hittables/hittable.hpp"
 #include "ray.hpp"
+#include "graphics/color.hpp"
+#include "pbr/pbr.hpp"
 
 // Forward declarations
 class PDF;
@@ -13,6 +15,7 @@ class PDF;
 namespace Raytracing
 {
     class Texture;
+    class ImageTexture;
 }
 
 enum SCATTER_TYPE
@@ -21,8 +24,9 @@ enum SCATTER_TYPE
     REFRACT
 };
 
-enum MATERIAL_TYPE
+enum MATERIAL_CLASS
 {
+    _PBR,
     LAMBERTIAN,
     METAL,
     DIELECTRIC,
@@ -31,14 +35,35 @@ enum MATERIAL_TYPE
     NONE
 };
 
+enum MATERIAL_TYPE
+{
+    _PDF,
+    NON_PDF,
+    EMISSIVE,
+    UNSPECIFIED
+};
+
 struct scatter_record
 {
 public:
-    bool is_specular;
-    optional<Ray> specular_ray;
+    optional<Ray> non_pdf_ray;
     shared_ptr<PDF> pdf;
-    Raytracing::color attenuation;
+    optional<BRDF_Parameters> brdf_parameters;
     SCATTER_TYPE scatter_type;
+};
+
+struct PBR_data
+{
+    vec3 albedo_scalar = vec3(1.0, 0.0, 1.0);
+    double metalness_scalar = 0.0;
+    double roughness_scalar = 1.0;
+
+    shared_ptr<Raytracing::ImageTexture> albedo_texture = nullptr;
+    shared_ptr<Raytracing::ImageTexture> metalness_texture = nullptr;
+    shared_ptr<Raytracing::ImageTexture> roughness_texture = nullptr;
+    shared_ptr<Raytracing::ImageTexture> roughness_metalness_texture = nullptr;
+    shared_ptr<Raytracing::ImageTexture> normal_texture = nullptr;
+    shared_ptr<Raytracing::ImageTexture> reflectance_texture = nullptr;
 };
 
 namespace Raytracing
@@ -50,11 +75,46 @@ namespace Raytracing
 
         virtual bool scatter(const Ray& incoming_ray, const hit_record& rec, scatter_record& srec) const;
         virtual color emitted(const Ray& incoming_ray, const hit_record& rec) const;
-        virtual double scattering_pdf_value(const Ray& incoming_ray, const hit_record& rec, const Ray& scattered_ray) const;
+        virtual vec3 BRDF_value(const Ray& incoming_ray, const Ray& scattered_ray, const hit_record& hrec, const scatter_record& srec) const;
+        const MATERIAL_CLASS get_class() const;
         const MATERIAL_TYPE get_type() const;
 
     protected:
-        MATERIAL_TYPE type = NONE;
+        MATERIAL_CLASS material_class = NONE;
+        MATERIAL_TYPE material_type = UNSPECIFIED;
+    };
+
+    /************ PBR Materials ************/
+
+    class PBR : public Material
+    {
+    public:
+        PBR(const PBR_data& data);
+
+        bool scatter(const Ray& incoming_ray, const hit_record& rec, scatter_record& srec) const override;
+        vec3 BRDF_value(const Ray& incoming_ray, const Ray& scattered_ray, const hit_record& hrec, const scatter_record& srec) const override;
+
+        vec3 get_albedo(const hit_record& rec) const;
+        double get_metalness(const hit_record& rec) const;
+        double get_roughness(const hit_record& rec) const;
+        pair<double, double> get_roughness_metalness(const hit_record& rec) const;
+        optional<double> get_reflectance(const hit_record& rec) const;
+
+        shared_ptr<Raytracing::ImageTexture> get_normal_texture() const;
+
+        double get_alpha(const hit_record& rec) const;
+
+    private:
+        vec3 default_albedo;
+        double default_roughness;
+        double default_metalness;
+
+        shared_ptr<Raytracing::ImageTexture> albedo_texture;
+        shared_ptr<Raytracing::ImageTexture> roughness_texture;
+        shared_ptr<Raytracing::ImageTexture> metalness_texture;
+        shared_ptr<Raytracing::ImageTexture> roughness_metalness_texture;
+        shared_ptr<Raytracing::ImageTexture> reflectance_texture;
+        shared_ptr<Raytracing::ImageTexture> normal_texture;
     };
 
     /************ Diffuse Materials ************/
@@ -66,10 +126,13 @@ namespace Raytracing
         Lambertian(shared_ptr<Texture> texture);
 
         bool scatter(const Ray& incoming_ray, const hit_record& rec, scatter_record& srec) const override;
-        double scattering_pdf_value(const Ray& incoming_ray, const hit_record& rec, const Ray& scattered_ray) const override;
-
+        vec3 BRDF_value(const Ray& incoming_ray, const Ray& scattered_ray, const hit_record& hrec, const scatter_record& srec) const override;
+        
     private:
         shared_ptr<Texture> texture;
+
+        color get_texture_value(const hit_record& rec) const;
+
     };
 
     class Isotropic : public Material
@@ -79,7 +142,7 @@ namespace Raytracing
         Isotropic(shared_ptr<Texture> texture);
 
         bool scatter(const Ray& incoming_ray, const hit_record& rec, scatter_record& srec) const override;
-        double scattering_pdf_value(const Ray& incoming_ray, const hit_record& rec, const Ray& scattered_ray) const override;
+        vec3 BRDF_value(const Ray& incoming_ray, const Ray& scattered_ray, const hit_record& hrec, const scatter_record& srec) const override;
 
     private:
         shared_ptr<Texture> texture;
@@ -93,6 +156,7 @@ namespace Raytracing
         Metal(const color& albedo, double fuzz);
 
         bool scatter(const Ray& incoming_ray, const hit_record& rec, scatter_record& srec) const override;
+        vec3 BRDF_value(const Ray& incoming_ray, const Ray& scattered_ray, const hit_record& hrec, const scatter_record& srec) const override;
 
     private:
         color albedo;
@@ -105,6 +169,7 @@ namespace Raytracing
         Dielectric(double refraction_index);
 
         bool scatter(const Ray& incoming_ray, const hit_record& rec, scatter_record& srec) const override;
+        vec3 BRDF_value(const Ray& incoming_ray, const Ray& scattered_ray, const hit_record& hrec, const scatter_record& srec) const override;
 
     private:
         double refraction_index; // Refractive index in vacuum or air, or the ratio of the material's refractive index over the refractive index of the enclosing media

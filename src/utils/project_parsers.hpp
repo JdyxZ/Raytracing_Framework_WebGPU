@@ -11,6 +11,8 @@ class Node;
 class Surface;
 class Camera;
 class Environment3D;
+class Material;
+class Texture;
 
 // Namespace forward declarations
 namespace Raytracing
@@ -20,6 +22,8 @@ namespace Raytracing
     class Matrix44;
     struct CameraData;
     class SkyboxTexture;
+    class Material;
+    class ImageTexture;
 }
 
 struct ParsedScene
@@ -35,8 +39,10 @@ using ParsedNode = ParsedScene;
 // Object parsers
 shared_ptr<ParsedScene> parse_nodes(const vector<Node*>& nodes, const bool use_bvh);
 ParsedScene parse_node(Node* node, const bool use_bvh);
-shared_ptr<Raytracing::Surface> parse_surface(Surface* surface, const Raytracing::Matrix44& model, const bool use_bvh);
 Raytracing::SkyboxTexture* parse_skybox(Environment3D* skybox);
+shared_ptr<Raytracing::Surface> parse_surface(Surface* surface, const Raytracing::Matrix44& model, const bool use_bvh);
+shared_ptr<Raytracing::Material> parse_material(const Material* material);
+shared_ptr<Raytracing::ImageTexture> parse_texture(const Texture* texture);
 optional<pair<double, double>> parse_texture_uvs(const optional<pair<double, double>>& uvs, const pair<WGPUAddressMode, WGPUAddressMode>& uv_wrap_mode);
 double parse_uv(double coord, WGPUAddressMode wrap_mode);
 

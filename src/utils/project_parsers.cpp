@@ -35,7 +35,7 @@ shared_ptr<ParsedScene> parse_nodes(const vector<Node*>& nodes, const bool use_b
     for (auto node : nodes)
     {
         // Skip skybox node
-        if (node->get_node_type() == "Environment3D")
+        if (node->get_node_type() == "Environment3D") // Revisar
             continue;
 
         auto parsed_node = parse_node(node, use_bvh);
@@ -117,28 +117,9 @@ SkyboxTexture* parse_skybox(Environment3D* skybox)
 
 shared_ptr<Raytracing::Surface> parse_surface(Surface* surface, const Raytracing::Matrix44& mesh_model, const bool use_bvh)
 {
-    // Material
-    shared_ptr<Raytracing::Material> parsed_material;
-    Material* material = surface->get_material();
-
-    // Texture
-    Texture* diffuse_texture = material->get_diffuse_texture();
-
-    // Load diffuse texture
-    if (diffuse_texture)
-    {
-        sTextureData& texture_data = diffuse_texture->get_texture_data();
-        pair<WGPUAddressMode, WGPUAddressMode> uv_wrap_modes = make_pair(diffuse_texture->get_wrap_u(), diffuse_texture->get_wrap_v());
-
-        auto texture = make_shared<ImageTexture>(texture_data, uv_wrap_modes);
-        parsed_material = make_shared<Lambertian>(texture);
-    }
-    // If there is no diffuse texture, create one
-    else
-    {
-        const color albedo = color(material->get_color());
-        parsed_material = make_shared<Lambertian>(albedo);
-    }
+    // Parse material
+    const Material* material = surface->get_material();
+    auto parsed_material = parse_material(material);
 
     // Triangles
     hittable_list triangles;
@@ -221,6 +202,39 @@ shared_ptr<Raytracing::Surface> parse_surface(Surface* surface, const Raytracing
     auto parsed_surface = make_shared<Raytracing::Surface>(triangles, parsed_material, nullopt, use_bvh);
 
     return parsed_surface;
+}
+
+shared_ptr<Raytracing::Material> parse_material(const Material* material)
+{
+    // Material initialization struct
+    PBR_data material_data;
+
+    // Scalaras
+    material_data.albedo_scalar = material->get_color();
+    material_data.roughness_scalar = material->get_roughness();
+    material_data.metalness_scalar = material->get_metallic();
+
+    // Get original textures
+    const Texture* albedo_texture = material->get_diffuse_texture();
+    const Texture* normal_texture = material->get_normal_texture();
+    const Texture* roughness_metalness_texture = material->get_metallic_roughness_texture();
+
+    // Parse textures
+    material_data.albedo_texture = albedo_texture ? parse_texture(albedo_texture) : nullptr;
+    material_data.normal_texture = normal_texture ? parse_texture(normal_texture) : nullptr;
+    material_data.roughness_metalness_texture = roughness_metalness_texture ? parse_texture(roughness_metalness_texture) : nullptr;
+
+    // Create material
+    return make_shared<Raytracing::PBR>(material_data);
+}
+
+shared_ptr<ImageTexture> parse_texture(const Texture* texture)
+{
+    // Parse texture wrap modes
+    const sTextureData& texture_data = texture->get_texture_data();
+    pair<WGPUAddressMode, WGPUAddressMode> uv_wrap_modes = make_pair(texture->get_wrap_u(), texture->get_wrap_v());
+
+    return make_shared<ImageTexture>(texture_data, uv_wrap_modes);
 }
 
 optional<pair<double, double>> parse_texture_uvs(const optional<pair<double, double>>& uvs, const pair<WGPUAddressMode, WGPUAddressMode>& uv_wrap_mode)

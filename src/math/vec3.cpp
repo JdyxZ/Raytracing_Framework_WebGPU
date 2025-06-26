@@ -163,3 +163,13 @@ double vec3::max_component() const
 {
     return std::max({ x, y, z });
 }
+
+double vec3::min_component() const
+{
+    return std::min({ x, y, z });
+}
+
+double vec3::average() const
+{
+    return (x + y + z) / 3.0;
+}
