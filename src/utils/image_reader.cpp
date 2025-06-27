@@ -27,6 +27,13 @@ Raytracing::ImageReader::ImageReader(const char* image_filename)
 
 Raytracing::ImageReader::ImageReader(const sTextureData& tex_data)
 {
+    // Check texture data
+    if (tex_data.data.size() == 0)
+    {
+        string error = Logger::error("IMAGE_READER", "Texture data is empty");
+        throw std::invalid_argument(error);
+    }
+
     // Set image specs
     is_linear = true; // All textures from framework are linear (assumption)
     image_type = ImageType::PARSED;

@@ -127,7 +127,7 @@ void Hittable::recompute_bbox()
     transform_bbox(model);
 }
 
-bool Hittable::is_primitive_hittable(HITTABLE_TYPE type)
+bool Hittable::is_not_primitive_hittable(HITTABLE_TYPE type)
 {
     return type != SPHERE && type != QUAD && type != TRIANGLE && type != CONSTANT_MEDIUM;
 }

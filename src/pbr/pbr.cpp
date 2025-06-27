@@ -35,7 +35,7 @@ double luminance(vec3 rgb)
     return dot(rgb, vec3(0.2126, 0.7152, 0.0722));
 }
 
-float shadowed_F90(float F0)
+double shadowed_F90(double F0)
 {
     //const double t = 60.0;
     const double t = (1.0 / min_F0_dielectrics);
@@ -134,6 +134,7 @@ BRDF_Parameters prepare_BRDF_params(optional<double> reflectance, vec3 albedo, d
 
     // Calculate specular to diffuse scattering ratio 
     double specular_ratio = luminance(fresnel_term);
+    specular_ratio = std::clamp(specular_ratio, 0.0, 1.0); // Clamp for safety
 
     // BRDF parameters
     BRDF_Parameters brdf_params;

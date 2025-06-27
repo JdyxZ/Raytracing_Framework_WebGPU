@@ -74,15 +74,15 @@ bool Raytracing::PBR::scatter(const Ray& incoming_ray, const hit_record& rec, sc
     auto diffuse_pdf = make_shared<cosine_hemisphere_pdf>(rec.normal);
 
     // Specular PDF (Visible Normal Distribution Function sampling)
-    auto specular_pdf = make_shared<vndf_pdf>(brdf_parameters.alpha, brdf_parameters.alpha_squared, view_direction);
+    // auto specular_pdf = make_shared<vndf_pdf>(brdf_parameters.alpha, brdf_parameters.alpha_squared, view_direction);
 
     // Create mixture density PDF (diffuse + specular)
-    auto pbr_pdf = make_shared<mixture_pdf>(specular_pdf, diffuse_pdf, brdf_parameters.specular_ratio);
+    // auto pbr_pdf = make_shared<mixture_pdf>(specular_pdf, diffuse_pdf, brdf_parameters.specular_ratio);
 
     // Fill scatter record
     srec.non_pdf_ray = nullopt;
     srec.scatter_type = REFLECT;
-    srec.pdf = pbr_pdf;
+    srec.pdf = diffuse_pdf;
     srec.brdf_parameters = brdf_parameters;
 
     return true;

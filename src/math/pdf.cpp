@@ -12,7 +12,7 @@ using Raytracing::pi;
 
 uniform_sphere_pdf::uniform_sphere_pdf() {}
 
-double uniform_sphere_pdf::value(const PDFSampleData& sample) const
+double uniform_sphere_pdf::evaluate(const PDFSampleData& sample) const
 {
     return 1 / (4 * pi);
 }
@@ -29,7 +29,7 @@ cosine_hemisphere_pdf::cosine_hemisphere_pdf(const vec3& normal)
     uvw = ONB(normal);
 }
 
-double cosine_hemisphere_pdf::value(const PDFSampleData& sample) const
+double cosine_hemisphere_pdf::evaluate(const PDFSampleData& sample) const
 {
     auto cosine_theta = dot(uvw.w(), sample.direction);
     return std::fmax(0, cosine_theta / pi);
@@ -50,12 +50,16 @@ PDFSampleData cosine_hemisphere_pdf::generate(const Ray& incoming_ray) const
     scatter_direction = uvw.transform(scatter_direction);
     sample_data.direction = scatter_direction;
 
+    // Calculate the halfway vector for combining the cosine-weighted hemisphere PDF with VNDF PDF
+    // vec3 view_direction = -incoming_ray.direction(); 
+    // sample_data.halfway_vector = normalize(view_direction + sample_data.direction); 
+
     return sample_data;
 }
 
 vndf_pdf::vndf_pdf(double alpha, double alpha_squared, vec3 view_direciton) : alpha(alpha), alpha_squared(alpha_squared), view_direction(view_direction) {}
 
-double vndf_pdf::value(const PDFSampleData& sample) const
+double vndf_pdf::evaluate(const PDFSampleData& sample) const
 {
     // Get the halfway vector from the sample data
     vec3 halfway_vector = sample.halfway_vector.value();
@@ -71,7 +75,7 @@ double vndf_pdf::value(const PDFSampleData& sample) const
     // Calculate the PDF of the halfway vector H. The distribution of visible normals is proportional to D * G1.
     double pdf_H = GGX_Distribution(alpha_squared_clamped, NdotH) * Smith_G1_Geometry(alpha, NdotV, alpha_squared, NdotV * NdotV);
 
-    // Convert the PDF of H to the PDF of L by dividing by the Jacobian of reflection operator (4 * VdotH).
+    // Convert the PDF of H to the PDF of L by dividing by the Jacobian of reflection operator (4 * NdotV).
     double pdf_L = pdf_H / (4.0 * VdotH);
 
     return pdf_L;
@@ -108,6 +112,9 @@ PDFSampleData vndf_pdf::generate(const Ray& incoming_ray) const
     sample_data.direction = sample_direction;
     sample_data.halfway_vector = generated_halfway;
 
+    if(sample_direction.x != sample_direction.x)
+        std::cout << "NaN detected in sample direction!" << std::endl;
+
     return sample_data;
 }
 
@@ -115,7 +122,7 @@ hittable_pdf::hittable_pdf(shared_ptr<Hittable> object, const point3& hit_point)
     : object(object), hit_point(hit_point)
 {}
 
-double hittable_pdf::value(const PDFSampleData& sample) const
+double hittable_pdf::evaluate(const PDFSampleData& sample) const
 {
     return object->pdf_value(hit_point, sample.direction);
 }
@@ -132,7 +139,7 @@ hittables_pdf::hittables_pdf(const vector<shared_ptr<Hittable>>& hittables, cons
     : hittables(hittables), hit_point(hit_point)
 {}
 
-double hittables_pdf::value(const PDFSampleData& sample) const
+double hittables_pdf::evaluate(const PDFSampleData& sample) const
 {
     if (hittables.size() == 0)
         return 0.0;
@@ -171,9 +178,9 @@ mixture_pdf::mixture_pdf(shared_ptr<PDF> p0, shared_ptr<PDF> p1, double w0)
     w[1] = 1.0 - w0; // Ensure that the weights sum to 1
 }
 
-double mixture_pdf::value(const PDFSampleData& sample) const
+double mixture_pdf::evaluate(const PDFSampleData& sample) const
 {
-    return w[0] * p[0]->value(sample) + w[1] * p[1]->value(sample);
+    return w[0] * p[0]->evaluate(sample) + w[1] * p[1]->evaluate(sample);
 }
 
 PDFSampleData mixture_pdf::generate(const Ray& incoming_ray) const

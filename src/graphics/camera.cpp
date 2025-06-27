@@ -210,7 +210,7 @@ color Raytracing::Camera::ray_color(const Ray& sample_ray, int depth, const Scen
     HITTABLE_TYPE hit_object_type = hrec.type;
 
     // Check unknown hit
-    if (!Hittable::is_primitive_hittable(hit_object_type))
+    if (Hittable::is_not_primitive_hittable(hit_object_type))
     {
         #pragma omp atomic update
             unknwon_rays++;
@@ -266,7 +266,7 @@ color Raytracing::Camera::compute_pdf_color(const Ray& sample_ray, int depth, co
 
     // Generate random scatter ray using the sampling PDF
     PDFSampleData sample_data = sampling_pdf->generate(sample_ray);
-    sample_data.direction.normalize();
+    sample_data.direction = sample_data.direction.normalize();
     auto scattered_ray = Ray(hrec.p, sample_data.direction, sample_ray.time());
 
     // Update reflecting rays count
@@ -282,7 +282,7 @@ color Raytracing::Camera::compute_pdf_color(const Ray& sample_ray, int depth, co
     auto BRDF = hrec.material->BRDF_value(sample_ray, scattered_ray, hrec, srec);
 
     // Get the weight of the generated scatter ray sample
-    auto pdf_value = sampling_pdf->value(sample_data);
+    auto pdf_value = sampling_pdf->evaluate(sample_data);
 
     // Get NdotL
     auto cosine_theta = std::fmax(0, dot(hrec.normal, scattered_ray.direction()));
